@@ -1,9 +1,10 @@
 from rest_framework import status
-from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
-from .serializer import RegistrationSerializer, CustomTokenObtainPairSerializer
+from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+
+from .serializer import LoginSerializer, RegistrationSerializer
 
 class RegistrationView(APIView):
     permission_classes = [AllowAny]
@@ -20,34 +21,38 @@ class RegistrationView(APIView):
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
-class CookieTokenObtainPairView(TokenObtainPairView):
-    serializer_class = CustomTokenObtainPairSerializer
+class LoginView(TokenObtainPairView):
+    permission_classes = [AllowAny]
+    serializer_class = LoginSerializer
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        return self._build_response(serializer.validated_data)
 
-        refresh = serializer.validated_data("refresh")
-        access = serializer.validated_data("access")
-
-        response = Response({"message": "Login successful"})
-
-        response.set_cookie(
-            key="access_token",
-            value=str(access),
-            httponly=True,
-            secure=True,
-            samesite="LAX",
+    def _build_response(self, validated_data):
+        response = Response(
+            {'detail': 'Login successfully!', 'user': validated_data['user']},
+            status=status.HTTP_200_OK,
         )
-        response.set_cookie(
-            key="refresh_token",
-            value=str(refresh),
-            httponly=True,
-            secure=True,
-            samesite="LAX",
-        )
-
+        self._set_token_cookies(response, validated_data)
         return response
+
+    def _set_token_cookies(self, response, validated_data):
+        response.set_cookie(
+            key='access_token',
+            value=str(validated_data['access']),
+            httponly=True,
+            secure=True,
+            samesite='LAX',
+        )
+        response.set_cookie(
+            key='refresh_token',
+            value=str(validated_data['refresh']),
+            httponly=True,
+            secure=True,
+            samesite='LAX',
+        )
 
 class CookieTokenRefreshView(TokenRefreshView):
     
