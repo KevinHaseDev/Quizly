@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.test import APITestCase
+from rest_framework_simplejwt.tokens import RefreshToken
 
 
 User = get_user_model()
@@ -95,3 +96,43 @@ class LoginEndpointTests(APITestCase):
 		self.assertEqual(response.status_code, status.HTTP_200_OK)
 		self.assertIn("access_token", response.cookies)
 		self.assertIn("refresh_token", response.cookies)
+
+
+class TokenRefreshEndpointTests(APITestCase):
+	def setUp(self):
+		self.url = "/api/token/refresh/"
+		self.user = User.objects.create_user(
+			username="alice",
+			email="alice@example.com",
+			password="safe-password-123",
+		)
+		self.refresh_token = str(RefreshToken.for_user(self.user))
+
+	def test_refresh_returns_200_for_valid_refresh_token_cookie(self):
+		self.client.cookies["refresh_token"] = self.refresh_token
+
+		response = self.client.post(self.url, {}, format="json")
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+	def test_refresh_returns_401_for_missing_refresh_token_cookie(self):
+		response = self.client.post(self.url, {}, format="json")
+
+		self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+	def test_refresh_returns_401_for_invalid_refresh_token_cookie(self):
+		self.client.cookies["refresh_token"] = "invalid-refresh-token"
+
+		response = self.client.post(self.url, {}, format="json")
+
+		self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+	def test_refresh_sets_new_access_token_cookie(self):
+		self.client.cookies["refresh_token"] = self.refresh_token
+		self.client.cookies["access_token"] = "stale-access-token"
+
+		response = self.client.post(self.url, {}, format="json")
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertIn("access_token", response.cookies)
+		self.assertNotEqual(response.cookies["access_token"].value, "stale-access-token")
