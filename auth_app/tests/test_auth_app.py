@@ -136,3 +136,42 @@ class TokenRefreshEndpointTests(APITestCase):
 		self.assertEqual(response.status_code, status.HTTP_200_OK)
 		self.assertIn("access_token", response.cookies)
 		self.assertNotEqual(response.cookies["access_token"].value, "stale-access-token")
+
+
+class LogoutEndpointTests(APITestCase):
+	def setUp(self):
+		self.url = "/api/logout/"
+		self.user = User.objects.create_user(
+			username="alice",
+			email="alice@example.com",
+			password="safe-password-123",
+		)
+		self.refresh_token = RefreshToken.for_user(self.user)
+		self.access_token = str(self.refresh_token.access_token)
+
+	def test_logout_returns_200_for_authenticated_user(self):
+		self.client.force_authenticate(user=self.user)
+		self.client.cookies["access_token"] = self.access_token
+		self.client.cookies["refresh_token"] = str(self.refresh_token)
+
+		response = self.client.post(self.url, {}, format="json")
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+	def test_logout_returns_401_without_authentication(self):
+		response = self.client.post(self.url, {}, format="json")
+
+		self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+	def test_logout_deletes_access_and_refresh_token_cookies(self):
+		self.client.force_authenticate(user=self.user)
+		self.client.cookies["access_token"] = self.access_token
+		self.client.cookies["refresh_token"] = str(self.refresh_token)
+
+		response = self.client.post(self.url, {}, format="json")
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertIn("access_token", response.cookies)
+		self.assertIn("refresh_token", response.cookies)
+		self.assertEqual(str(response.cookies["access_token"]["max-age"]), "0")
+		self.assertEqual(str(response.cookies["refresh_token"]["max-age"]), "0")
