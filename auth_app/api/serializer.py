@@ -1,15 +1,15 @@
 from rest_framework import serializers
-from django.contrib.auth.models import User
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
 User = get_user_model()
 
 class RegistrationSerializer(serializers.ModelSerializer):
-    repeated_password = serializers.CharField(write_only=True)
+    confirmed_password = serializers.CharField(write_only=True)
 
     class Meta:
         model = User
-        fields = ['username', 'email', 'password', 'repeated_password']
+        fields = ['username', 'email', 'password', 'confirmed_password']
         extra_kwargs = {
             'password': {
                 'write_only': True
@@ -19,7 +19,7 @@ class RegistrationSerializer(serializers.ModelSerializer):
             }
         }
 
-    def validate_repeated_password(self, value):
+    def validate_confirmed_password(self, value):
         password = self.initial_data.get('password')
         if password and value and password != value:
             raise serializers.ValidationError('Passwords do not match')
@@ -30,13 +30,11 @@ class RegistrationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Email already exists')
         return value
 
-    def save(self):
-        pw = self.validated_data['password']
+    def create(self, validated_data):
+        validated_data.pop('confirmed_password')
+        pw = validated_data.pop('password')
 
-        account = User(
-            email=self.validated_data['email'], 
-            username=self.validated_data['username']
-            )
+        account = User(**validated_data)
         account.set_password(pw)
         account.save()
         return account
