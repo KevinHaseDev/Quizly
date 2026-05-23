@@ -53,3 +53,45 @@ class RegistrationEndpointTests(APITestCase):
 
 		self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 		self.assertEqual(User.objects.filter(email="taken@example.com").count(), 1)
+
+
+class LoginEndpointTests(APITestCase):
+	def setUp(self):
+		self.url = "/api/login/"
+		self.user = User.objects.create_user(
+			username="alice",
+			email="alice@example.com",
+			password="safe-password-123",
+		)
+
+	def test_login_returns_200_for_valid_credentials(self):
+		payload = {
+			"username": "alice",
+			"password": "safe-password-123",
+		}
+
+		response = self.client.post(self.url, payload, format="json")
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+	def test_login_returns_401_for_invalid_credentials(self):
+		payload = {
+			"username": "alice",
+			"password": "wrong-password-456",
+		}
+
+		response = self.client.post(self.url, payload, format="json")
+
+		self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+	def test_login_sets_access_and_refresh_token_cookies(self):
+		payload = {
+			"username": "alice",
+			"password": "safe-password-123",
+		}
+
+		response = self.client.post(self.url, payload, format="json")
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertIn("access_token", response.cookies)
+		self.assertIn("refresh_token", response.cookies)
