@@ -1,8 +1,14 @@
 from urllib.parse import parse_qs, urlparse
 
+import yt_dlp
+
 
 class QuizGenerationValidationError(ValueError):
     """Raised when quiz generation input data is invalid."""
+
+
+class QuizGenerationAcquisitionError(RuntimeError):
+    """Raised when video metadata/audio data cannot be fetched."""
 
 
 class QuizGenerationService:
@@ -30,13 +36,23 @@ class QuizGenerationService:
         return video_url
 
     def acquire_audio(self, video_url):
-        """Placeholder for audio retrieval from YouTube."""
+        """Fetch audio source information and metadata with yt_dlp."""
 
-        video_id = self._extract_video_id(video_url)
+        info = self._fetch_media_info(video_url)
+        video_id = info.get('id') or self._extract_video_id(video_url)
+        audio_url = self._resolve_audio_url(info)
+
         return {
             'video_url': video_url,
             'video_id': video_id,
-            'audio_path': f'mock://audio/{video_id}.mp3',
+            'audio_url': audio_url,
+            'audio_path': audio_url or f'mock://audio/{video_id}.mp3',
+            'metadata': {
+                'title': info.get('title'),
+                'duration': info.get('duration'),
+                'uploader': info.get('uploader'),
+                'thumbnail': info.get('thumbnail'),
+            },
         }
 
     def transcribe_audio(self, audio_reference):
@@ -76,6 +92,34 @@ class QuizGenerationService:
         if host.endswith('youtube.com'):
             return parse_qs(parsed_url.query).get('v', ['video'])[0]
         return parsed_url.path.strip('/') or 'video'
+
+    def _fetch_media_info(self, video_url):
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'skip_download': True,
+            'noplaylist': True,
+            'format': 'bestaudio/best',
+        }
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                return ydl.extract_info(video_url, download=False)
+        except Exception as exc:
+            raise QuizGenerationAcquisitionError('Could not fetch YouTube audio metadata.') from exc
+
+    def _resolve_audio_url(self, info):
+        requested_formats = info.get('requested_formats') or []
+        for item in requested_formats:
+            if item.get('vcodec') == 'none' and item.get('url'):
+                return item['url']
+
+        formats = info.get('formats') or []
+        audio_only = [item for item in formats if item.get('vcodec') == 'none' and item.get('url')]
+        if audio_only:
+            best = max(audio_only, key=lambda item: item.get('abr') or 0)
+            return best.get('url')
+
+        return info.get('url')
 
 
 def create_quiz_from_youtube_url(video_url):
