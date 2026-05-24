@@ -137,7 +137,9 @@ class QuizGenerationService:
         return (
             'Create a quiz as strict JSON (no markdown). '\
             'Use keys: title, description, questions. '\
-            'questions must be a list of 10 objects with keys: title, description. '\
+            'questions must be a list of 10 objects with keys: question_title, question_options, answer. '\
+            'question_options must contain exactly 4 answer options. '\
+            'answer must match one value from question_options. '\
             f'Video URL: {video_url}\n\n'
             f'Transcript:\n{clipped}'
         )
@@ -163,13 +165,23 @@ class QuizGenerationService:
             for item in questions:
                 if not isinstance(item, dict):
                     continue
-                question_title = item.get('title') or item.get('question') or item.get('question_title')
-                question_description = item.get('description') or item.get('explanation') or ''
+                question_title = item.get('question_title') or item.get('title') or item.get('question')
+                raw_options = item.get('question_options') or item.get('options') or item.get('choices') or []
+                if not isinstance(raw_options, list):
+                    raw_options = []
+                question_options = [str(option).strip() for option in raw_options if str(option).strip()]
+                question_options = question_options[:4]
+                while len(question_options) < 4:
+                    question_options.append(f'Option {chr(65 + len(question_options))}')
+                answer = str(item.get('answer') or question_options[0]).strip()
+                if answer not in question_options:
+                    answer = question_options[0]
                 if question_title:
                     normalized_questions.append(
                         {
-                            'title': str(question_title).strip(),
-                            'description': str(question_description).strip(),
+                            'question_title': str(question_title).strip(),
+                            'question_options': question_options,
+                            'answer': answer,
                         }
                     )
 
@@ -184,23 +196,21 @@ class QuizGenerationService:
 
     def _build_fallback_quiz_payload(self, video_url, transcript):
         excerpt = transcript[:80].strip() or 'the video content'
+        default_questions = []
+        for index in range(1, 11):
+            question_options = ['Option A', 'Option B', 'Option C', 'Option D']
+            default_questions.append(
+                {
+                    'question_title': f'Question {index}: What is a key point from the transcript?',
+                    'question_options': question_options,
+                    'answer': 'Option A',
+                }
+            )
+
         return {
             'title': 'Generated Quiz',
-            'description': f'Generated from {video_url}',
-            'questions': [
-                {
-                    'title': 'What is the main topic of this video?',
-                    'description': f'Use transcript excerpt: {excerpt}',
-                },
-                {
-                    'title': 'Which key detail is highlighted in the transcript?',
-                    'description': 'Answer based on the generated transcript text.',
-                },
-                {
-                    'title': 'What practical takeaway can be inferred?',
-                    'description': 'Explain one actionable insight from the content.',
-                },
-            ],
+            'description': f'Generated from {video_url}. Context: {excerpt}',
+            'questions': default_questions,
         }
 
     def _extract_video_id(self, video_url):

@@ -3,8 +3,9 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.test import APITestCase
+from rest_framework_simplejwt.tokens import RefreshToken
 
-from quiz_app.models import Quiz
+from quiz_app.models import Question, Quiz
 
 
 User = get_user_model()
@@ -43,6 +44,22 @@ class QuizListCreateEndpointTests(APITestCase):
             description='Owned by another user',
         )
         self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self.url, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['id'], own_quiz.id)
+
+    def test_quiz_list_returns_200_for_cookie_authenticated_user(self):
+        own_quiz = Quiz.objects.create(
+            owner=self.user,
+            video_url='https://www.youtube.com/watch?v=ownquiz-cookie-auth',
+            title='Cookie Auth Quiz',
+            description='Owned by cookie-authenticated user',
+        )
+        refresh = RefreshToken.for_user(self.user)
+        self.client.cookies['access_token'] = str(refresh.access_token)
 
         response = self.client.get(self.url, format='json')
 
@@ -130,6 +147,27 @@ class QuizDetailEndpointTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_quiz_detail_uses_documented_question_schema(self):
+        Question.objects.create(
+            quiz=self.own_quiz,
+            question_title='Question 1',
+            question_options=['Option A', 'Option B', 'Option C', 'Option D'],
+            answer='Option A',
+        )
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self._detail_url(self.own_quiz.id), format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotIn('owner', response.data)
+        self.assertEqual(len(response.data['questions']), 1)
+        question = response.data['questions'][0]
+        self.assertIn('question_title', question)
+        self.assertIn('question_options', question)
+        self.assertIn('answer', question)
+        self.assertNotIn('title', question)
+        self.assertNotIn('description', question)
+
     def _detail_url(self, quiz_id):
         return f'/api/quizzes/{quiz_id}/'
 
@@ -214,6 +252,16 @@ class QuizUpdateDeleteEndpointTests(APITestCase):
         self.own_quiz.refresh_from_db()
         self.assertEqual(self.own_quiz.title, payload['title'])
         self.assertEqual(self.own_quiz.description, payload['description'])
+
+    def test_quiz_patch_returns_400_for_unsupported_field(self):
+        payload = {
+            'video_url': 'https://www.youtube.com/watch?v=not-allowed-update',
+        }
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.patch(self._detail_url(self.own_quiz.id), payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_quiz_delete_returns_204_and_deletes_quiz(self):
         self.client.force_authenticate(user=self.user)

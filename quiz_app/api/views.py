@@ -8,7 +8,12 @@ from quiz_app.models import Question, Quiz
 from quiz_app.services.quiz_generator import create_quiz_from_youtube_url
 
 from .permissions import IsQuizOwner
-from .serializers import QuizCreateRequestSerializer, QuizSerializer
+from .serializers import (
+    QuizCreateRequestSerializer,
+    QuizCreateResponseSerializer,
+    QuizSerializer,
+    QuizUpdateSerializer,
+)
 
 
 class QuizListCreateView(generics.GenericAPIView):
@@ -32,7 +37,7 @@ class QuizListCreateView(generics.GenericAPIView):
         generated_quiz = create_quiz_from_youtube_url(video_url)
         quiz = self._save_quiz_with_questions(request.user, video_url, generated_quiz)
 
-        serializer = self.get_serializer(quiz)
+        serializer = QuizCreateResponseSerializer(quiz)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def _save_quiz_with_questions(self, user, video_url, generated_quiz):
@@ -50,8 +55,9 @@ class QuizListCreateView(generics.GenericAPIView):
             Question.objects.bulk_create([
                 Question(
                     quiz=quiz,
-                    title=question.get('title', 'Generated Question'),
-                    description=question.get('description', ''),
+                    question_title=question.get('question_title', 'Generated Question'),
+                    question_options=question.get('question_options', []),
+                    answer=question.get('answer', ''),
                 )
                 for question in questions
             ])
@@ -80,9 +86,19 @@ class QuizDetailView(generics.GenericAPIView):
 
     def patch(self, request, *args, **kwargs):
         quiz = self._get_object()
-        serializer = self.get_serializer(quiz, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
+        allowed_fields = {'title', 'description'}
+        unsupported_fields = set(request.data.keys()) - allowed_fields
+        if unsupported_fields:
+            return Response(
+                {'detail': 'Only title and description can be updated.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        update_serializer = QuizUpdateSerializer(quiz, data=request.data, partial=True)
+        update_serializer.is_valid(raise_exception=True)
+        update_serializer.save()
+
+        serializer = self.get_serializer(quiz)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def delete(self, request, *args, **kwargs):

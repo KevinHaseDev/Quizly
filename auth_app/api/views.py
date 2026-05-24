@@ -2,11 +2,24 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .serializer import LoginSerializer, RegistrationSerializer
+
+
+class CookieJWTAuthentication(JWTAuthentication):
+    """Authenticate requests using the access_token cookie."""
+
+    def authenticate(self, request):
+        raw_token = request.COOKIES.get('access_token')
+        if raw_token is None:
+            return None
+
+        validated_token = self.get_validated_token(raw_token)
+        return self.get_user(validated_token), validated_token
 
 class RegistrationView(APIView):
     permission_classes = [AllowAny]
