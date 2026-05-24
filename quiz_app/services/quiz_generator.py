@@ -1,5 +1,6 @@
 from urllib.parse import parse_qs, urlparse
 
+import whisper
 import yt_dlp
 
 
@@ -9,6 +10,10 @@ class QuizGenerationValidationError(ValueError):
 
 class QuizGenerationAcquisitionError(RuntimeError):
     """Raised when video metadata/audio data cannot be fetched."""
+
+
+class QuizGenerationTranscriptionError(RuntimeError):
+    """Raised when audio cannot be transcribed with Whisper."""
 
 
 class QuizGenerationService:
@@ -23,6 +28,10 @@ class QuizGenerationService:
         audio_reference = self.acquire_audio(normalized_url)
         transcript = self.transcribe_audio(audio_reference)
         return self.generate_quiz_with_ai(transcript, normalized_url)
+
+    def __init__(self, whisper_model_name='turbo'):
+        self.whisper_model_name = whisper_model_name
+        self._whisper_model = None
 
     def validate_url(self, video_url):
         parsed_url = urlparse(video_url)
@@ -56,12 +65,22 @@ class QuizGenerationService:
         }
 
     def transcribe_audio(self, audio_reference):
-        """Placeholder for speech-to-text transcription."""
+        """Transcribe an audio source with Whisper."""
 
-        return (
-            'This is a placeholder transcript generated from '
-            f"{audio_reference['audio_path']} for development and tests."
-        )
+        transcription_source = self._get_transcription_source(audio_reference)
+        if not transcription_source:
+            raise QuizGenerationTranscriptionError('No audio source available for transcription.')
+
+        try:
+            model = self._get_whisper_model()
+            result = model.transcribe(transcription_source)
+        except Exception as exc:
+            raise QuizGenerationTranscriptionError('Could not transcribe audio with Whisper.') from exc
+
+        transcript_text = (result.get('text') or '').strip()
+        if not transcript_text:
+            raise QuizGenerationTranscriptionError('Whisper returned an empty transcript.')
+        return transcript_text
 
     def generate_quiz_with_ai(self, transcript, video_url):
         """Placeholder for AI quiz generation from transcript text."""
@@ -92,6 +111,14 @@ class QuizGenerationService:
         if host.endswith('youtube.com'):
             return parse_qs(parsed_url.query).get('v', ['video'])[0]
         return parsed_url.path.strip('/') or 'video'
+
+    def _get_transcription_source(self, audio_reference):
+        return audio_reference.get('audio_path') or audio_reference.get('audio_url')
+
+    def _get_whisper_model(self):
+        if self._whisper_model is None:
+            self._whisper_model = whisper.load_model(self.whisper_model_name)
+        return self._whisper_model
 
     def _fetch_media_info(self, video_url):
         ydl_opts = {
