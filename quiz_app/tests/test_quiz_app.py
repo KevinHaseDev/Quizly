@@ -77,3 +77,151 @@ class QuizListCreateEndpointTests(APITestCase):
         response = self.client.post(self.url, payload, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class QuizDetailEndpointTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='charlie',
+            email='charlie@example.com',
+            password='safe-password-123',
+        )
+        self.other_user = User.objects.create_user(
+            username='diana',
+            email='diana@example.com',
+            password='safe-password-123',
+        )
+        self.own_quiz = Quiz.objects.create(
+            owner=self.user,
+            video_url='https://www.youtube.com/watch?v=ownquiz002',
+            title='Owned Quiz',
+            description='Owned by requesting user',
+        )
+        self.other_quiz = Quiz.objects.create(
+            owner=self.other_user,
+            video_url='https://www.youtube.com/watch?v=otherquiz02',
+            title='Foreign Quiz',
+            description='Owned by another user',
+        )
+
+    def test_quiz_detail_returns_401_without_authentication(self):
+        response = self.client.get(self._detail_url(self.own_quiz.id), format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_quiz_detail_returns_200_for_own_quiz(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self._detail_url(self.own_quiz.id), format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_quiz_detail_returns_403_for_foreign_quiz(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self._detail_url(self.other_quiz.id), format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_quiz_detail_returns_404_for_unknown_quiz_id(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self._detail_url(999999), format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def _detail_url(self, quiz_id):
+        return f'/api/quizzes/{quiz_id}/'
+
+
+class QuizUpdateDeleteEndpointTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='eve',
+            email='eve@example.com',
+            password='safe-password-123',
+        )
+        self.other_user = User.objects.create_user(
+            username='frank',
+            email='frank@example.com',
+            password='safe-password-123',
+        )
+        self.own_quiz = Quiz.objects.create(
+            owner=self.user,
+            video_url='https://www.youtube.com/watch?v=ownquiz003',
+            title='Original Title',
+            description='Original Description',
+        )
+        self.other_quiz = Quiz.objects.create(
+            owner=self.other_user,
+            video_url='https://www.youtube.com/watch?v=otherquiz03',
+            title='Foreign Title',
+            description='Foreign Description',
+        )
+
+    def test_quiz_patch_returns_401_without_authentication(self):
+        payload = {'title': 'Updated Title'}
+
+        response = self.client.patch(self._detail_url(self.own_quiz.id), payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_quiz_delete_returns_401_without_authentication(self):
+        response = self.client.delete(self._detail_url(self.own_quiz.id), format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_quiz_patch_returns_403_for_foreign_quiz(self):
+        payload = {'title': 'Blocked Update'}
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.patch(self._detail_url(self.other_quiz.id), payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_quiz_delete_returns_403_for_foreign_quiz(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.delete(self._detail_url(self.other_quiz.id), format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_quiz_patch_returns_404_for_unknown_quiz_id(self):
+        payload = {'title': 'Unknown'}
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.patch(self._detail_url(999999), payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_quiz_delete_returns_404_for_unknown_quiz_id(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.delete(self._detail_url(999999), format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_quiz_patch_updates_title_and_description(self):
+        payload = {
+            'title': 'Partially Updated Title',
+            'description': 'Partially Updated Description',
+        }
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.patch(self._detail_url(self.own_quiz.id), payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.own_quiz.refresh_from_db()
+        self.assertEqual(self.own_quiz.title, payload['title'])
+        self.assertEqual(self.own_quiz.description, payload['description'])
+
+    def test_quiz_delete_returns_204_and_deletes_quiz(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.delete(self._detail_url(self.own_quiz.id), format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Quiz.objects.filter(id=self.own_quiz.id).exists())
+
+    def _detail_url(self, quiz_id):
+        return f'/api/quizzes/{quiz_id}/'
