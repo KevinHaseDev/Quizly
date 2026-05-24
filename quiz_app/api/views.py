@@ -74,8 +74,9 @@ class QuizDetailView(generics.GenericAPIView):
         return quiz
 
     def get(self, request, *args, **kwargs):
-        self._get_object()
-        return Response({'detail': 'Not implemented yet.'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+        quiz = self._get_object()
+        serializer = self.get_serializer(quiz)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def patch(self, request, *args, **kwargs):
         self._get_object()
