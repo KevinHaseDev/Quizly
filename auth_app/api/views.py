@@ -1,7 +1,22 @@
-from rest_framework import status
+from rest_framework_simplejwt.authentication import JWTAuthentication
+
+
+class CookieJWTAuthentication(JWTAuthentication):
+    """Authenticate requests using only the access token cookie."""
+
+    def authenticate(self, request):
+        cookie_token = request.COOKIES.get('access_token')
+        if cookie_token is None:
+            return None
+
+        raw_token = cookie_token.encode('utf-8')
+        validated_token = self.get_validated_token(raw_token)
+        return self.get_user(validated_token), validated_token
+
+
+from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
@@ -9,20 +24,19 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .serializer import LoginSerializer, RegistrationSerializer
 
 
-class RegistrationView(APIView):
+
+class RegistrationView(generics.CreateAPIView):
     permission_classes = [AllowAny]
+    serializer_class = RegistrationSerializer
 
-    def post(self, request):
-        serializer = RegistrationSerializer(data=request.data)
-
-        if serializer.is_valid():
-            serializer.save()
-            return Response(
-                {'detail': 'User created successfully!'},
-                status=status.HTTP_201_CREATED,
-            )
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return Response(
+            {'detail': 'User created successfully!'},
+            status=status.HTTP_201_CREATED,
+        )
         
 class LoginView(TokenObtainPairView):
     permission_classes = [AllowAny]
@@ -91,7 +105,7 @@ class CookieTokenRefreshView(TokenRefreshView):
         return response
 
 
-class LogoutView(APIView):
+class LogoutView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
