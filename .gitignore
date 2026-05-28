@@ -1,1 +1,72 @@
+# Environment variables
 .env
+.env.*
+!.env.example
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Packaging / build artifacts
+.Python
+build/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+*.egg
+.installed.cfg
+MANIFEST
+
+# Logs
+*.log
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Test / coverage / type-check caches
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+.hypothesis/
+.tox/
+.nox/
+
+# Django
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+local_settings.py
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE / editor
+.vscode/
+.idea/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
