@@ -5,7 +5,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from quiz_app.models import Question, Quiz
-from quiz_app.services.quiz_generator import create_quiz_from_youtube_url
+from quiz_app.services.quiz_generator import (
+    QuizGenerationValidationError,
+    create_quiz_from_youtube_url,
+)
 
 from .permissions import IsQuizOwner
 from .serializers import (
@@ -33,8 +36,12 @@ class QuizListCreateView(generics.GenericAPIView):
         request_serializer = QuizCreateRequestSerializer(data=request.data)
         request_serializer.is_valid(raise_exception=True)
 
-        video_url = request_serializer.validated_data['url']
-        generated_quiz = create_quiz_from_youtube_url(video_url)
+        video_url = request_serializer.validated_data['source_url']
+        try:
+            generated_quiz = create_quiz_from_youtube_url(video_url)
+        except QuizGenerationValidationError as exc:
+            return Response({'url': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
         quiz = self._save_quiz_with_questions(request.user, video_url, generated_quiz)
 
         serializer = QuizCreateResponseSerializer(quiz)
@@ -44,24 +51,84 @@ class QuizListCreateView(generics.GenericAPIView):
         if isinstance(generated_quiz, Quiz):
             return generated_quiz
 
+        quiz_payload = generated_quiz if isinstance(generated_quiz, dict) else {}
+
         with transaction.atomic():
             quiz = Quiz.objects.create(
                 owner=user,
                 video_url=video_url,
-                title=generated_quiz.get('title', 'Generated Quiz'),
-                description=generated_quiz.get('description', ''),
+                title=str(quiz_payload.get('title') or 'Generated Quiz').strip(),
+                description=str(quiz_payload.get('description') or '').strip(),
             )
-            questions = generated_quiz.get('questions', [])
+
+            questions = self._normalize_generated_questions(quiz_payload)
             Question.objects.bulk_create([
                 Question(
                     quiz=quiz,
-                    question_title=question.get('question_title', 'Generated Question'),
-                    question_options=question.get('question_options', []),
-                    answer=question.get('answer', ''),
+                    question_title=question['question_title'],
+                    question_options=question['question_options'],
+                    answer=question['answer'],
                 )
                 for question in questions
             ])
             return quiz
+
+    def _normalize_generated_questions(self, quiz_payload):
+        raw_questions = quiz_payload.get('questions', []) if isinstance(quiz_payload, dict) else []
+        normalized_questions = []
+
+        if isinstance(raw_questions, list):
+            for index, raw_question in enumerate(raw_questions, start=1):
+                if len(normalized_questions) == 10:
+                    break
+                if not isinstance(raw_question, dict):
+                    continue
+                normalized_questions.append(self._normalize_question(raw_question, index))
+
+        while len(normalized_questions) < 10:
+            normalized_questions.append(self._build_fallback_question(len(normalized_questions) + 1))
+
+        return normalized_questions
+
+    def _normalize_question(self, raw_question, index):
+        question_title = str(
+            raw_question.get('question_title')
+            or raw_question.get('question')
+            or f'Generated Question {index}'
+        ).strip()
+
+        raw_options = raw_question.get('question_options') or raw_question.get('options') or []
+        if not isinstance(raw_options, list):
+            raw_options = []
+
+        options = []
+        for option in raw_options:
+            option_text = str(option).strip()
+            if option_text and option_text not in options:
+                options.append(option_text)
+            if len(options) == 4:
+                break
+
+        while len(options) < 4:
+            options.append(f'Option {chr(65 + len(options))}')
+
+        answer = str(raw_question.get('answer') or options[0]).strip()
+        if answer not in options:
+            answer = options[0]
+
+        return {
+            'question_title': question_title,
+            'question_options': options,
+            'answer': answer,
+        }
+
+    def _build_fallback_question(self, index):
+        options = ['Option A', 'Option B', 'Option C', 'Option D']
+        return {
+            'question_title': f'Question {index}: Generated fallback question',
+            'question_options': options,
+            'answer': options[0],
+        }
 
 
 class QuizDetailView(generics.GenericAPIView):

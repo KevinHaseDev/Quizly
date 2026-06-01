@@ -1,5 +1,3 @@
-from urllib.parse import parse_qs, urlparse
-
 from rest_framework import serializers
 
 from quiz_app.models import Question, Quiz
@@ -56,13 +54,8 @@ class QuizUpdateSerializer(serializers.ModelSerializer):
 
 
 class QuizCreateRequestSerializer(serializers.Serializer):
-    url = serializers.URLField()
+    url = serializers.URLField(required=True)
 
-    def validate_url(self, value):
-        parsed_url = urlparse(value)
-        host = parsed_url.netloc.lower()
-        if host in {'youtu.be', 'www.youtu.be'} and parsed_url.path.strip('/'):
-            return value
-        if host.endswith('youtube.com') and parse_qs(parsed_url.query).get('v'):
-            return value
-        raise serializers.ValidationError('Only YouTube URLs are supported.')
+    def validate(self, attrs):
+        attrs['source_url'] = attrs['url']
+        return attrs

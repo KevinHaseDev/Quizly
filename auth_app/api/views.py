@@ -1,18 +1,55 @@
+from django.conf import settings
 from rest_framework_simplejwt.authentication import JWTAuthentication
+
+
+def _jwt_lifetime_seconds(setting_key, default_seconds):
+    lifetime = (getattr(settings, 'SIMPLE_JWT', {}) or {}).get(setting_key)
+    if lifetime is None:
+        return default_seconds
+    try:
+        return int(lifetime.total_seconds())
+    except (AttributeError, TypeError, ValueError):
+        return default_seconds
+
+
+def _access_cookie_max_age():
+    return getattr(
+        settings,
+        'AUTH_COOKIE_ACCESS_MAX_AGE',
+        _jwt_lifetime_seconds('ACCESS_TOKEN_LIFETIME', 300),
+    )
+
+
+def _refresh_cookie_max_age():
+    return getattr(
+        settings,
+        'AUTH_COOKIE_REFRESH_MAX_AGE',
+        _jwt_lifetime_seconds('REFRESH_TOKEN_LIFETIME', 86400),
+    )
+
+
+def _auth_cookie_secure():
+    return bool(getattr(settings, 'AUTH_COOKIE_SECURE', False))
+
+
+def _auth_cookie_samesite():
+    return getattr(settings, 'AUTH_COOKIE_SAMESITE', 'Lax')
 
 
 class CookieJWTAuthentication(JWTAuthentication):
     """Authenticate requests using only the access token cookie."""
 
+    def get_header(self, request):
+        # Authorization headers are intentionally ignored for protected routes.
+        return None
+
     def authenticate(self, request):
         cookie_token = request.COOKIES.get('access_token')
-        if cookie_token is None:
+        if not cookie_token:
             return None
 
-        raw_token = cookie_token.encode('utf-8')
-        validated_token = self.get_validated_token(raw_token)
+        validated_token = self.get_validated_token(cookie_token)
         return self.get_user(validated_token), validated_token
-
 
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -56,20 +93,28 @@ class LoginView(TokenObtainPairView):
         return response
 
     def _set_token_cookies(self, response, validated_data):
+        access_cookie = self._build_cookie_kwargs(_access_cookie_max_age())
+        refresh_cookie = self._build_cookie_kwargs(_refresh_cookie_max_age())
+
         response.set_cookie(
             key='access_token',
             value=str(validated_data['access']),
-            httponly=True,
-            secure=True,
-            samesite='LAX',
+            **access_cookie,
         )
         response.set_cookie(
             key='refresh_token',
             value=str(validated_data['refresh']),
-            httponly=True,
-            secure=True,
-            samesite='LAX',
+            **refresh_cookie,
         )
+
+    def _build_cookie_kwargs(self, max_age):
+        return {
+            'httponly': True,
+            'secure': _auth_cookie_secure(),
+            'samesite': _auth_cookie_samesite(),
+            'max_age': max_age,
+            'path': '/',
+        }
 
 class CookieTokenRefreshView(TokenRefreshView):
     def post(self, request, *args, **kwargs):
@@ -98,8 +143,10 @@ class CookieTokenRefreshView(TokenRefreshView):
             key='access_token',
             value=access_token,
             httponly=True,
-            secure=True,
-            samesite='LAX',
+            secure=_auth_cookie_secure(),
+            samesite=_auth_cookie_samesite(),
+            max_age=_access_cookie_max_age(),
+            path='/',
         )
 
         return response
@@ -127,5 +174,13 @@ class LogoutView(generics.GenericAPIView):
             return
 
     def _clear_auth_cookies(self, response):
-        response.delete_cookie('access_token', samesite='LAX')
-        response.delete_cookie('refresh_token', samesite='LAX')
+        response.delete_cookie(
+            'access_token',
+            path='/',
+            samesite=_auth_cookie_samesite(),
+        )
+        response.delete_cookie(
+            'refresh_token',
+            path='/',
+            samesite=_auth_cookie_samesite(),
+        )
