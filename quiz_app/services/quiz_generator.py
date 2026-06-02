@@ -30,18 +30,21 @@ class QuizGenerationService:
     """
 
     def generate_from_url(self, video_url):
+        """Generate a quiz from a YouTube video URL."""
         normalized_url = self.validate_url(video_url)
         audio_reference = self.acquire_audio(normalized_url)
         transcript = self.transcribe_audio(audio_reference)
         return self.generate_quiz_with_ai(transcript, normalized_url)
 
     def __init__(self, whisper_model_name='turbo', gemini_model_name='gemini-3.5-flash'):
+        """Initialize the quiz generation service with model names and placeholders."""
         self.whisper_model_name = whisper_model_name
         self.gemini_model_name = gemini_model_name
         self._whisper_model = None
         self._gemini_client = None
 
     def validate_url(self, video_url):
+        """Validate the provided video URL."""
         parsed_url = urlparse(video_url)
         host = parsed_url.netloc.lower()
 
@@ -101,6 +104,7 @@ class QuizGenerationService:
             return self._build_fallback_quiz_payload(video_url, transcript)
 
     def _request_quiz_from_gemini(self, transcript, video_url):
+        """Send a request to Gemini to generate quiz content based on the transcript."""
         client = self._get_gemini_client()
         prompt = self._build_quiz_prompt(transcript, video_url)
         try:
@@ -117,6 +121,7 @@ class QuizGenerationService:
         return response_text
 
     def _get_gemini_client(self):
+        """Get or initialize the Gemini client."""
         if self._gemini_client is not None:
             return self._gemini_client
 
@@ -133,6 +138,7 @@ class QuizGenerationService:
         return self._gemini_client
 
     def _build_quiz_prompt(self, transcript, video_url):
+        """Build a prompt for Gemini to generate quiz content based on the video transcript."""
         clipped = transcript[:12000]
         return (
             'Create a quiz as strict JSON (no markdown). '\
@@ -145,6 +151,7 @@ class QuizGenerationService:
         )
 
     def _parse_gemini_quiz_payload(self, response_text):
+        """Parse the Gemini quiz payload from the response text."""
         cleaned = response_text.strip()
         if cleaned.startswith('```'):
             cleaned = cleaned.strip('`')
@@ -156,6 +163,7 @@ class QuizGenerationService:
             raise QuizGenerationAIError('Gemini did not return valid JSON.') from exc
 
     def _normalize_quiz_payload(self, payload, video_url, transcript):
+        """Normalize the Gemini quiz payload to ensure it meets the required format and content standards."""
         title = payload.get('title') if isinstance(payload, dict) else None
         description = payload.get('description') if isinstance(payload, dict) else None
         questions = payload.get('questions') if isinstance(payload, dict) else None
@@ -195,6 +203,7 @@ class QuizGenerationService:
         }
 
     def _build_fallback_quiz_payload(self, video_url, transcript):
+        """Build a fallback quiz payload when Gemini generation fails or returns invalid content."""
         excerpt = transcript[:80].strip() or 'the video content'
         default_questions = []
         for index in range(1, 11):
@@ -214,6 +223,7 @@ class QuizGenerationService:
         }
 
     def _extract_video_id(self, video_url):
+        """Extract the video ID from a YouTube URL."""
         parsed_url = urlparse(video_url)
         host = parsed_url.netloc.lower()
         if host.endswith('youtube.com'):
@@ -221,14 +231,17 @@ class QuizGenerationService:
         return parsed_url.path.strip('/') or 'video'
 
     def _get_transcription_source(self, audio_reference):
+        """Determine the best available audio source for transcription."""
         return audio_reference.get('audio_path') or audio_reference.get('audio_url')
 
     def _get_whisper_model(self):
+        """Get or initialize the Whisper model for transcription."""
         if self._whisper_model is None:
             self._whisper_model = whisper.load_model(self.whisper_model_name)
         return self._whisper_model
 
     def _fetch_media_info(self, video_url):
+        """Fetch media information for a YouTube video using yt_dlp."""
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
@@ -243,6 +256,7 @@ class QuizGenerationService:
             raise QuizGenerationAcquisitionError('Could not fetch YouTube audio metadata.') from exc
 
     def _resolve_audio_url(self, info):
+        """Resolve the best available audio URL from yt_dlp media info."""
         requested_formats = info.get('requested_formats') or []
         for item in requested_formats:
             if item.get('vcodec') == 'none' and item.get('url'):

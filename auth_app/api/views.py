@@ -1,8 +1,18 @@
+from rest_framework import generics, status
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+
+from .serializer import LoginSerializer, RegistrationSerializer
+
 from django.conf import settings
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 
 def _jwt_lifetime_seconds(setting_key, default_seconds):
+    """Helper to get JWT lifetime in seconds from settings."""
     lifetime = (getattr(settings, 'SIMPLE_JWT', {}) or {}).get(setting_key)
     if lifetime is None:
         return default_seconds
@@ -13,6 +23,7 @@ def _jwt_lifetime_seconds(setting_key, default_seconds):
 
 
 def _access_cookie_max_age():
+    """Get max age for access token cookie from settings or default to JWT lifetime."""
     return getattr(
         settings,
         'AUTH_COOKIE_ACCESS_MAX_AGE',
@@ -21,6 +32,7 @@ def _access_cookie_max_age():
 
 
 def _refresh_cookie_max_age():
+    """Get max age for refresh token cookie from settings or default to JWT lifetime."""
     return getattr(
         settings,
         'AUTH_COOKIE_REFRESH_MAX_AGE',
@@ -29,10 +41,12 @@ def _refresh_cookie_max_age():
 
 
 def _auth_cookie_secure():
+    """Determine if auth cookies should be secure based on settings."""
     return bool(getattr(settings, 'AUTH_COOKIE_SECURE', False))
 
 
 def _auth_cookie_samesite():
+    """Get SameSite attribute for auth cookies from settings or default to 'Lax'."""
     return getattr(settings, 'AUTH_COOKIE_SAMESITE', 'Lax')
 
 
@@ -40,10 +54,11 @@ class CookieJWTAuthentication(JWTAuthentication):
     """Authenticate requests using only the access token cookie."""
 
     def get_header(self, request):
-        # Authorization headers are intentionally ignored for protected routes.
+        """Override to ignore Authorization header and use cookie instead."""
         return None
 
     def authenticate(self, request):
+        """Authenticate the request using the access token from cookies."""
         cookie_token = request.COOKIES.get('access_token')
         if not cookie_token:
             return None
@@ -51,22 +66,15 @@ class CookieJWTAuthentication(JWTAuthentication):
         validated_token = self.get_validated_token(cookie_token)
         return self.get_user(validated_token), validated_token
 
-from rest_framework import generics, status
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.response import Response
-from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
-
-from .serializer import LoginSerializer, RegistrationSerializer
-
 
 
 class RegistrationView(generics.CreateAPIView):
+    """API view for user registration."""
     permission_classes = [AllowAny]
     serializer_class = RegistrationSerializer
 
     def create(self, request, *args, **kwargs):
+        """Override to return custom response on successful registration."""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
@@ -76,15 +84,18 @@ class RegistrationView(generics.CreateAPIView):
         )
         
 class LoginView(TokenObtainPairView):
+    """API view for user login that sets JWT tokens in HttpOnly cookies."""
     permission_classes = [AllowAny]
     serializer_class = LoginSerializer
 
     def post(self, request, *args, **kwargs):
+        """Override to set JWT tokens in cookies on successful login."""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         return self._build_response(serializer.validated_data)
 
     def _build_response(self, validated_data):
+        """Helper to build the response with tokens set in cookies."""
         response = Response(
             {'detail': 'Login successfully!', 'user': validated_data['user']},
             status=status.HTTP_200_OK,
@@ -93,6 +104,7 @@ class LoginView(TokenObtainPairView):
         return response
 
     def _set_token_cookies(self, response, validated_data):
+        """Helper to set access and refresh tokens in HttpOnly cookies."""
         access_cookie = self._build_cookie_kwargs(_access_cookie_max_age())
         refresh_cookie = self._build_cookie_kwargs(_refresh_cookie_max_age())
 
@@ -108,6 +120,7 @@ class LoginView(TokenObtainPairView):
         )
 
     def _build_cookie_kwargs(self, max_age):
+        """Helper to build cookie keyword arguments based on settings."""
         return {
             'httponly': True,
             'secure': _auth_cookie_secure(),
@@ -117,7 +130,9 @@ class LoginView(TokenObtainPairView):
         }
 
 class CookieTokenRefreshView(TokenRefreshView):
+    """API view to refresh JWT access token using the refresh token from cookies."""
     def post(self, request, *args, **kwargs):
+        """Override to refresh access token using the refresh token from cookies."""
         refresh_token = request.COOKIES.get('refresh_token')
         if not refresh_token:
             return Response(
@@ -153,9 +168,11 @@ class CookieTokenRefreshView(TokenRefreshView):
 
 
 class LogoutView(generics.GenericAPIView):
+    """API view for user logout that blacklists the refresh token and clears auth cookies."""
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        """Override to blacklist the refresh token and clear auth cookies on logout."""
         self._blacklist_refresh_token(request)
         response = Response(
             {'detail': 'Log-Out successfully! All Tokens will be deleted. Refresh token is now invalid.'},
@@ -165,6 +182,7 @@ class LogoutView(generics.GenericAPIView):
         return response
 
     def _blacklist_refresh_token(self, request):
+        """Helper to blacklist the refresh token from cookies."""
         refresh_token = request.COOKIES.get('refresh_token')
         if not refresh_token:
             return
@@ -174,6 +192,7 @@ class LogoutView(generics.GenericAPIView):
             return
 
     def _clear_auth_cookies(self, response):
+        """Helper to clear access and refresh token cookies."""
         response.delete_cookie(
             'access_token',
             path='/',

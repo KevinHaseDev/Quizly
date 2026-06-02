@@ -26,13 +26,16 @@ class QuizListCreateView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        """Get the queryset of quizzes for the authenticated user."""
         return Quiz.objects.filter(owner=self.request.user).prefetch_related('questions')
 
     def get(self, request, *args, **kwargs):
+        """Handle GET requests to list quizzes."""
         serializer = self.get_serializer(self.get_queryset(), many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request, *args, **kwargs):
+        """Handle POST requests to create a new quiz."""
         request_serializer = QuizCreateRequestSerializer(data=request.data)
         request_serializer.is_valid(raise_exception=True)
 
@@ -48,6 +51,7 @@ class QuizListCreateView(generics.GenericAPIView):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def _save_quiz_with_questions(self, user, video_url, generated_quiz):
+        """Save a quiz along with its questions."""
         if isinstance(generated_quiz, Quiz):
             return generated_quiz
 
@@ -74,6 +78,7 @@ class QuizListCreateView(generics.GenericAPIView):
             return quiz
 
     def _normalize_generated_questions(self, quiz_payload):
+        """Normalize the generated quiz questions to ensure they meet the required format."""
         raw_questions = quiz_payload.get('questions', []) if isinstance(quiz_payload, dict) else []
         normalized_questions = []
 
@@ -91,6 +96,7 @@ class QuizListCreateView(generics.GenericAPIView):
         return normalized_questions
 
     def _normalize_question(self, raw_question, index):
+        """Normalize a single quiz question to ensure it meets the required format."""
         question_title = str(
             raw_question.get('question_title')
             or raw_question.get('question')
@@ -123,6 +129,7 @@ class QuizListCreateView(generics.GenericAPIView):
         }
 
     def _build_fallback_question(self, index):
+        """Build a fallback question when there are not enough generated questions."""
         options = ['Option A', 'Option B', 'Option C', 'Option D']
         return {
             'question_title': f'Question {index}: Generated fallback question',
@@ -139,19 +146,23 @@ class QuizDetailView(generics.GenericAPIView):
     lookup_url_kwarg = 'id'
 
     def get_queryset(self):
+        """Get the queryset of quizzes for the authenticated user."""
         return Quiz.objects.select_related('owner').prefetch_related('questions')
 
     def _get_object(self):
+        """Retrieve a quiz object and check permissions."""
         quiz = get_object_or_404(self.get_queryset(), pk=self.kwargs.get(self.lookup_url_kwarg))
         self.check_object_permissions(self.request, quiz)
         return quiz
 
     def get(self, request, *args, **kwargs):
+        """Handle GET requests to retrieve quiz details."""
         quiz = self._get_object()
         serializer = self.get_serializer(quiz)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def patch(self, request, *args, **kwargs):
+        """Handle PATCH requests to update quiz title and description."""
         quiz = self._get_object()
         allowed_fields = {'title', 'description'}
         unsupported_fields = set(request.data.keys()) - allowed_fields
@@ -169,6 +180,7 @@ class QuizDetailView(generics.GenericAPIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def delete(self, request, *args, **kwargs):
+        """Handle DELETE requests to delete a quiz."""
         quiz = self._get_object()
         quiz.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
