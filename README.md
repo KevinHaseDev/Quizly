@@ -1,129 +1,142 @@
 # Quizly Backend
 
-Django REST backend for Quizly.
+Django REST API that generates quizzes from YouTube videos. The backend
+transcribes a video's audio with Whisper AI and uses Google Gemini Flash to
+produce a ten-question multiple-choice quiz, which is then stored and served
+through a JWT-authenticated REST API.
 
 ## Tech Stack
 
-- Python 3.14+
-- Django 6
-- Django REST Framework
-- SimpleJWT (HTTP-only cookie auth)
-- yt-dlp (YouTube audio source extraction)
-- openai-whisper (transcription)
-- google-genai (Gemini Flash quiz generation)
+| Component | Library |
+|---|---|
+| Framework | Django 6 + Django REST Framework |
+| Authentication | `djangorestframework-simplejwt` (HTTP-only cookies) |
+| Video download | `yt-dlp` |
+| Transcription | OpenAI Whisper (local) |
+| Quiz generation | Google Gemini Flash (`google-genai`) |
+| Database | SQLite (development) |
 
-## Features
+## Prerequisites
 
-- User registration and login
-- JWT authentication with HTTP-only cookies (`access_token`, `refresh_token`)
-- Refresh-token rotation endpoint
-- Logout with refresh-token blacklist
-- Quiz CRUD for authenticated owners
-- Quiz creation from YouTube URLs
+- **Python 3.11+**
+- **FFmpeg** — required by Whisper for audio processing.  
+  Install via your package manager or download from https://ffmpeg.org/download.html  
+  and make sure `ffmpeg` is available on your system `PATH`.
+- A **Google Gemini API key** (free tier is sufficient).  
+  Obtain one at https://aistudio.google.com/app/apikey
 
-## Required External Dependencies
+## Setup
 
-### FFMPEG (required)
-
-Whisper processing requires a globally available `ffmpeg` binary.
-
-Verify installation:
+### 1. Clone the repository
 
 ```bash
-ffmpeg -version
+git clone <repository-url>
+cd quizly_test
 ```
 
-## Environment Variables
+### 2. Create and activate a virtual environment
 
-Create a `.env` file in the project root.
+```bash
+python -m venv .venv
+
+# Windows
+.venv\Scripts\activate
+
+# macOS / Linux
+source .venv/bin/activate
+```
+
+### 3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Configure environment variables
+
+Create a `.env` file in the project root:
 
 ```env
 SECRET_KEY=your-django-secret-key
 GOOGLE_API_KEY=your-gemini-api-key
 ```
 
-Notes:
-- `GOOGLE_API_KEY` is required for Gemini quiz generation.
-- In local development, missing auth cookie settings are handled with safe defaults in code.
-
-## Installation
+Generate a Django secret key with:
 
 ```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
+python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
 ```
 
-## Database Setup
+### 5. Apply database migrations
 
 ```bash
 python manage.py migrate
+```
+
+### 6. Create a superuser (optional, for Admin panel)
+
+```bash
 python manage.py createsuperuser
 ```
 
-## Run Development Server
+### 7. Start the development server
 
 ```bash
 python manage.py runserver
 ```
 
-Backend base URL:
-
-- `http://127.0.0.1:8000/`
+The API is available at `http://127.0.0.1:8000/`.  
+The admin panel is available at `http://127.0.0.1:8000/admin/`.
 
 ## API Endpoints
 
 ### Authentication
 
-- `POST /api/register/`
-- `POST /api/login/`
-- `POST /api/logout/`
-- `POST /api/token/refresh/`
+| Method | URL | Description | Auth required |
+|---|---|---|---|
+| `POST` | `/api/register/` | Register a new user | No |
+| `POST` | `/api/login/` | Login and receive JWT cookies | No |
+| `POST` | `/api/logout/` | Logout and blacklist tokens | Yes |
+| `POST` | `/api/token/refresh/` | Refresh access token from cookie | No |
 
-### Quiz Management
+Authentication uses HTTP-only cookies (`access_token`, `refresh_token`).
 
-- `POST /api/quizzes/`
-- `GET /api/quizzes/`
-- `GET /api/quizzes/{id}/`
-- `PATCH /api/quizzes/{id}/`
-- `DELETE /api/quizzes/{id}/`
+### Quizzes
 
-## Admin
+| Method | URL | Description | Auth required |
+|---|---|---|---|
+| `GET` | `/api/quizzes/` | List all quizzes of the authenticated user | Yes |
+| `POST` | `/api/quizzes/` | Generate a new quiz from a YouTube URL | Yes |
+| `GET` | `/api/quizzes/{id}/` | Retrieve a specific quiz | Yes |
+| `PATCH` | `/api/quizzes/{id}/` | Update title and/or description | Yes |
+| `DELETE` | `/api/quizzes/{id}/` | Delete a quiz permanently | Yes |
 
-Django admin is enabled and quiz entities are registered:
+#### Quiz creation request body
 
-- `Quiz`
-- `Question`
+```json
+{ "url": "https://www.youtube.com/watch?v=example" }
+```
 
-Login:
+Only YouTube URLs are accepted (standard `watch?v=` and short `youtu.be/` formats).
 
-- `http://127.0.0.1:8000/admin/`
-
-## Tests
-
-Run all tests:
+## Running Tests
 
 ```bash
 python manage.py test
 ```
 
-## Coverage
-
-Run coverage and enforce a minimum threshold:
+With coverage:
 
 ```bash
+pip install coverage
 coverage run manage.py test
-coverage report --fail-under=95
+coverage report
 ```
 
-Generate HTML report:
+## Notes
 
-```bash
-coverage html
-```
-
-## Important Submission Notes
-
-- Submit backend as a dedicated repository.
-- Do not commit SQLite database files.
-- Keep `requirements.txt` complete and up to date.
+- The Whisper `turbo` model (~1.5 GB) is downloaded automatically on first use and
+  cached in `~/.cache/whisper/`.
+- Quiz generation runs synchronously during the HTTP request. For production use a
+  task queue (e.g. Celery) is recommended.
+- The database file `db.sqlite3` is excluded from version control.

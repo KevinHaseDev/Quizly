@@ -1,1 +1,3 @@
-"""Admin configuration for auth_app."""
+from django.contrib import admin
+
+# Register your models here.
