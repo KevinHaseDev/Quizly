@@ -1,3 +1,4 @@
+from django.conf import settings
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -47,14 +48,14 @@ class LoginView(TokenObtainPairView):
             key='access_token',
             value=str(validated_data['access']),
             httponly=True,
-            secure=True,
+            secure=not settings.DEBUG,
             samesite='LAX',
         )
         response.set_cookie(
             key='refresh_token',
             value=str(validated_data['refresh']),
             httponly=True,
-            secure=True,
+            secure=not settings.DEBUG,
             samesite='LAX',
         )
 
@@ -85,7 +86,7 @@ class CookieTokenRefreshView(TokenRefreshView):
             key='access_token',
             value=access_token,
             httponly=True,
-            secure=True,
+            secure=not settings.DEBUG,
             samesite='LAX',
         )
 

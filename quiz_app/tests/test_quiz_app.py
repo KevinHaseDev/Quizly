@@ -6,6 +6,7 @@ from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from quiz_app.models import Question, Quiz
+from quiz_app.services.quiz_generator import QuizGenerationServiceError
 
 
 User = get_user_model()
@@ -73,14 +74,20 @@ class QuizListCreateEndpointTests(APITestCase):
         }
         self.client.force_authenticate(user=self.user)
 
-        # Keep external generation mocked during API tests.
-        with patch('quiz_app.api.views.create_quiz_from_youtube_url', create=True) as mocked_create:
-            mocked_create.return_value = Quiz.objects.create(
-                owner=self.user,
-                video_url=payload['url'],
-                title='Generated Quiz',
-                description='Created by mocked generator',
-            )
+        generated_payload = {
+            'title': 'Generated Quiz',
+            'description': 'Created by mocked generator',
+            'questions': [
+                {
+                    'question_title': f'Question {i}',
+                    'question_options': ['A', 'B', 'C', 'D'],
+                    'answer': 'A',
+                }
+                for i in range(10)
+            ],
+        }
+        with patch('quiz_app.api.views.create_quiz_from_youtube_url') as mocked_create:
+            mocked_create.return_value = generated_payload
             response = self.client.post(self.url, payload, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -94,6 +101,16 @@ class QuizListCreateEndpointTests(APITestCase):
         response = self.client.post(self.url, payload, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_quiz_create_returns_503_when_service_fails(self):
+        payload = {'url': 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'}
+        self.client.force_authenticate(user=self.user)
+
+        with patch('quiz_app.api.views.create_quiz_from_youtube_url') as mocked_create:
+            mocked_create.side_effect = QuizGenerationServiceError('service error')
+            response = self.client.post(self.url, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
 class QuizDetailEndpointTests(APITestCase):
@@ -273,3 +290,29 @@ class QuizUpdateDeleteEndpointTests(APITestCase):
 
     def _detail_url(self, quiz_id):
         return f'/api/quizzes/{quiz_id}/'
+
+
+class ModelStrTests(APITestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username='strtest',
+            email='strtest@example.com',
+            password='safe-password-123',
+        )
+        self.quiz = Quiz.objects.create(
+            owner=self.user,
+            video_url='https://www.youtube.com/watch?v=abc',
+            title='My Quiz',
+        )
+        self.question = Question.objects.create(
+            quiz=self.quiz,
+            question_title='What is 2+2?',
+            question_options=['1', '2', '3', '4'],
+            answer='4',
+        )
+
+    def test_quiz_str_returns_title(self):
+        self.assertEqual(str(self.quiz), 'My Quiz')
+
+    def test_question_str_returns_question_title(self):
+        self.assertEqual(str(self.question), 'What is 2+2?')
