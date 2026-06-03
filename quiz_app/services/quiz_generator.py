@@ -57,30 +57,18 @@ class QuizGenerationService:
         return video_url
 
     def acquire_audio(self, video_url):
-        """Resolve the best audio stream URL and metadata with yt-dlp."""
+        """Resolve the best audio stream URL with yt-dlp."""
         info = self._fetch_media_info(video_url)
         audio_url = self._resolve_audio_url(info)
         if not audio_url:
             raise QuizGenerationAcquisitionError('No audio stream available for this video.')
-        return {
-            'video_url': video_url,
-            'audio_url': audio_url,
-            'metadata': {
-                'title': info.get('title'),
-                'duration': info.get('duration'),
-                'uploader': info.get('uploader'),
-                'thumbnail': info.get('thumbnail'),
-            },
-        }
+        return audio_url
 
-    def transcribe_audio(self, audio_reference):
+    def transcribe_audio(self, audio_url):
         """Transcribe the resolved audio source with Whisper."""
-        audio_url = audio_reference.get('audio_url')
-        if not audio_url:
-            raise QuizGenerationTranscriptionError('No audio source available for transcription.')
         try:
             result = self._get_whisper_model().transcribe(audio_url)
-        except (Exception, SystemExit) as exc:
+        except Exception as exc:
             raise QuizGenerationTranscriptionError(
                 'Could not transcribe audio with Whisper.') from exc
         transcript = (result.get('text') or '').strip()
@@ -102,7 +90,7 @@ class QuizGenerationService:
                 model=self.gemini_model_name,
                 contents=prompt,
             )
-        except (Exception, SystemExit) as exc:
+        except Exception as exc:
             raise QuizGenerationAIError('Gemini request failed.') from exc
         response_text = (getattr(response, 'text', None) or '').strip()
         if not response_text:
@@ -173,19 +161,22 @@ class QuizGenerationService:
         raw_options = item.get('question_options')
         if not question_title or not isinstance(raw_options, list):
             return None
-        options = [str(o).strip() for o in raw_options if str(o).strip()]
+        options = [s for o in raw_options if (s := str(o).strip())]
         if len(options) != 4:
             return None
         answer = str(item.get('answer', '')).strip()
+        if answer not in options:
+            return None
         return {
             'question_title': str(question_title).strip(),
             'question_options': options,
-            'answer': answer if answer in options else options[0],
+            'answer': answer,
         }
 
     def _get_whisper_model(self):
         """Return a cached Whisper model, loaded on first call."""
-        self._whisper_model = whisper.load_model(self.whisper_model_name)
+        if self._whisper_model is None:
+            self._whisper_model = whisper.load_model(self.whisper_model_name)
         return self._whisper_model
 
     def _fetch_media_info(self, video_url):
@@ -200,7 +191,7 @@ class QuizGenerationService:
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 return ydl.extract_info(video_url, download=False)
-        except (Exception, SystemExit) as exc:
+        except Exception as exc:
             raise QuizGenerationAcquisitionError(
                 'Could not fetch YouTube audio metadata.') from exc
 
