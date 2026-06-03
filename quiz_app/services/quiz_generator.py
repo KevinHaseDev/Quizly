@@ -185,11 +185,7 @@ class QuizGenerationService:
 
     def _get_whisper_model(self):
         """Return a cached Whisper model, loaded on first call."""
-        if self._whisper_model is None:
-            try:
-                self._whisper_model = whisper.load_model(self.whisper_model_name).to('cuda')
-            except Exception:  # pragma: no cover - no GPU available
-                self._whisper_model = whisper.load_model(self.whisper_model_name)
+        self._whisper_model = whisper.load_model(self.whisper_model_name)
         return self._whisper_model
 
     def _fetch_media_info(self, video_url):
