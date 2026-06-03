@@ -5,7 +5,12 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from quiz_app.models import Question, Quiz
-from quiz_app.services.quiz_generator import create_quiz_from_youtube_url
+from quiz_app.services.quiz_generator import (
+    QuizGenerationAcquisitionError,
+    QuizGenerationTranscriptionError,
+    QuizGenerationValidationError,
+    create_quiz_from_youtube_url,
+)
 
 from .permissions import IsQuizOwner
 from .serializers import (
@@ -34,7 +39,13 @@ class QuizListCreateView(generics.GenericAPIView):
         request_serializer.is_valid(raise_exception=True)
 
         video_url = request_serializer.validated_data['url']
-        generated_quiz = create_quiz_from_youtube_url(video_url)
+        try:
+            generated_quiz = create_quiz_from_youtube_url(video_url)
+        except QuizGenerationValidationError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except (QuizGenerationAcquisitionError, QuizGenerationTranscriptionError) as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
         quiz = self._save_quiz_with_questions(request.user, video_url, generated_quiz)
 
         serializer = QuizCreateResponseSerializer(quiz)
