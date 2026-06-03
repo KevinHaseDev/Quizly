@@ -9,6 +9,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .serializer import LoginSerializer, RegistrationSerializer
 
 
+
 class RegistrationView(APIView):
     permission_classes = [AllowAny]
 

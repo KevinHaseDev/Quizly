@@ -1,1 +1,55 @@
+# Environment
 .env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Django
+db.sqlite3
+*.log
+media/
+staticfiles/
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# ML models (Whisper)
+*.pt
+
+# Downloaded audio/video
+*.mp3
+*.mp4
+*.webm
+*.m4a
+*.wav
+
+# IDE / editors
+.vscode/
+.idea/
+.continue/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

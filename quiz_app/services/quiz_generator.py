@@ -45,11 +45,14 @@ class QuizGenerationService:
         parsed_url = urlparse(video_url)
         host = parsed_url.netloc.lower()
 
-        is_short_url = host in {'youtu.be', 'www.youtu.be'} and bool(parsed_url.path.strip('/'))
-        is_standard_url = host.endswith('youtube.com') and bool(parse_qs(parsed_url.query).get('v'))
+        is_short_url = host in {'youtu.be', 'www.youtu.be'} and bool(
+            parsed_url.path.strip('/'))
+        is_standard_url = host.endswith('youtube.com') and bool(
+            parse_qs(parsed_url.query).get('v'))
 
         if not (is_short_url or is_standard_url):
-            raise QuizGenerationValidationError('Only YouTube URLs are supported.')
+            raise QuizGenerationValidationError(
+                'Only YouTube URLs are supported.')
         return video_url
 
     def acquire_audio(self, video_url):
@@ -77,24 +80,28 @@ class QuizGenerationService:
 
         transcription_source = self._get_transcription_source(audio_reference)
         if not transcription_source:
-            raise QuizGenerationTranscriptionError('No audio source available for transcription.')
+            raise QuizGenerationTranscriptionError(
+                'No audio source available for transcription.')
 
         try:
             model = self._get_whisper_model()
             result = model.transcribe(transcription_source)
         except Exception as exc:
-            raise QuizGenerationTranscriptionError('Could not transcribe audio with Whisper.') from exc
+            raise QuizGenerationTranscriptionError(
+                'Could not transcribe audio with Whisper.') from exc
 
         transcript_text = (result.get('text') or '').strip()
         if not transcript_text:
-            raise QuizGenerationTranscriptionError('Whisper returned an empty transcript.')
+            raise QuizGenerationTranscriptionError(
+                'Whisper returned an empty transcript.')
         return transcript_text
 
     def generate_quiz_with_ai(self, transcript, video_url):
         """Generate quiz content from transcript with Gemini Flash."""
 
         try:
-            response_text = self._request_quiz_from_gemini(transcript, video_url)
+            response_text = self._request_quiz_from_gemini(
+                transcript, video_url)
             payload = self._parse_gemini_quiz_payload(response_text)
             return self._normalize_quiz_payload(payload, video_url, transcript)
         except QuizGenerationAIError:
@@ -113,7 +120,8 @@ class QuizGenerationService:
 
         response_text = (getattr(response, 'text', None) or '').strip()
         if not response_text:
-            raise QuizGenerationAIError('Gemini response did not include text output.')
+            raise QuizGenerationAIError(
+                'Gemini response did not include text output.')
         return response_text
 
     def _get_gemini_client(self):
@@ -122,27 +130,29 @@ class QuizGenerationService:
 
         api_key = os.getenv('GOOGLE_API_KEY')
         if not api_key:
-            raise QuizGenerationAIError('GOOGLE_API_KEY is missing for Gemini requests.')
+            raise QuizGenerationAIError(
+                'GOOGLE_API_KEY is missing for Gemini requests.')
 
         try:
             from google import genai
         except Exception as exc:
-            raise QuizGenerationAIError('google-genai package is not available.') from exc
+            raise QuizGenerationAIError(
+                'google-genai package is not available.') from exc
 
         self._gemini_client = genai.Client(api_key=api_key)
         return self._gemini_client
 
     def _build_quiz_prompt(self, transcript, video_url):
         clipped = transcript[:12000]
-        return (
-            'Create a quiz as strict JSON (no markdown). '\
-            'Use keys: title, description, questions. '\
-            'questions must be a list of 10 objects with keys: question_title, question_options, answer. '\
-            'question_options must contain exactly 4 answer options. '\
-            'answer must match one value from question_options. '\
-            f'Video URL: {video_url}\n\n'
-            f'Transcript:\n{clipped}'
-        )
+        return f"""Create a quiz as strict JSON (no markdown).
+Use keys: title, description, questions.
+questions must be a list of 10 objects with keys: question_title, question_options, answer.
+question_options must contain exactly 4 answer options.
+answer must match one value from question_options.
+Video URL: {video_url}
+
+Transcript:
+{clipped}"""
 
     def _parse_gemini_quiz_payload(self, response_text):
         cleaned = response_text.strip()
@@ -153,26 +163,33 @@ class QuizGenerationService:
         try:
             return json.loads(cleaned)
         except json.JSONDecodeError as exc:
-            raise QuizGenerationAIError('Gemini did not return valid JSON.') from exc
+            raise QuizGenerationAIError(
+                'Gemini did not return valid JSON.') from exc
 
     def _normalize_quiz_payload(self, payload, video_url, transcript):
         title = payload.get('title') if isinstance(payload, dict) else None
-        description = payload.get('description') if isinstance(payload, dict) else None
-        questions = payload.get('questions') if isinstance(payload, dict) else None
+        description = payload.get('description') if isinstance(
+            payload, dict) else None
+        questions = payload.get('questions') if isinstance(
+            payload, dict) else None
 
         normalized_questions = []
         if isinstance(questions, list):
             for item in questions:
                 if not isinstance(item, dict):
                     continue
-                question_title = item.get('question_title') or item.get('title') or item.get('question')
-                raw_options = item.get('question_options') or item.get('options') or item.get('choices') or []
+                question_title = item.get('question_title') or item.get(
+                    'title') or item.get('question')
+                raw_options = item.get('question_options') or item.get(
+                    'options') or item.get('choices') or []
                 if not isinstance(raw_options, list):
                     raw_options = []
-                question_options = [str(option).strip() for option in raw_options if str(option).strip()]
+                question_options = [str(option).strip()
+                                    for option in raw_options if str(option).strip()]
                 question_options = question_options[:4]
                 while len(question_options) < 4:
-                    question_options.append(f'Option {chr(65 + len(question_options))}')
+                    question_options.append(
+                        f'Option {chr(65 + len(question_options))}')
                 answer = str(item.get('answer') or question_options[0]).strip()
                 if answer not in question_options:
                     answer = question_options[0]
@@ -225,7 +242,12 @@ class QuizGenerationService:
 
     def _get_whisper_model(self):
         if self._whisper_model is None:
-            self._whisper_model = whisper.load_model(self.whisper_model_name)
+            try:
+                self._whisper_model = whisper.load_model(
+                    self.whisper_model_name).to("cuda")
+            except Exception:  # pragma: no cover – no GPU available
+                self._whisper_model = whisper.load_model(
+                    self.whisper_model_name)
         return self._whisper_model
 
     def _fetch_media_info(self, video_url):
@@ -240,21 +262,17 @@ class QuizGenerationService:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 return ydl.extract_info(video_url, download=False)
         except Exception as exc:
-            raise QuizGenerationAcquisitionError('Could not fetch YouTube audio metadata.') from exc
+            raise QuizGenerationAcquisitionError(
+                'Could not fetch YouTube audio metadata.') from exc
 
     def _resolve_audio_url(self, info):
-        requested_formats = info.get('requested_formats') or []
-        for item in requested_formats:
-            if item.get('vcodec') == 'none' and item.get('url'):
-                return item['url']
-
         formats = info.get('formats') or []
-        audio_only = [item for item in formats if item.get('vcodec') == 'none' and item.get('url')]
-        if audio_only:
-            best = max(audio_only, key=lambda item: item.get('abr') or 0)
-            return best.get('url')
-
-        return info.get('url')
+        audio_only = [f for f in formats if f.get(
+            'vcodec') == 'none' and f.get('url')]
+        if not audio_only:
+            return info.get('url')  # fallback to the generic URL
+        best = max(audio_only, key=lambda f: f.get('abr') or 0)
+        return best['url']
 
 
 def create_quiz_from_youtube_url(video_url):
