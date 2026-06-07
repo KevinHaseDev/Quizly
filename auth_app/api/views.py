@@ -1,3 +1,4 @@
+"""Views for handling user registration, login, token refresh, and logout."""
 from django.conf import settings
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -12,9 +13,11 @@ from .serializer import LoginSerializer, RegistrationSerializer
 
 
 class RegistrationView(APIView):
+    """View for handling user registration."""
     permission_classes = [AllowAny]
 
     def post(self, request):
+        """Handle POST request for user registration."""
         serializer = RegistrationSerializer(data=request.data)
 
         if serializer.is_valid():
@@ -27,15 +30,20 @@ class RegistrationView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
 class LoginView(TokenObtainPairView):
+    """View for handling user login."""
     permission_classes = [AllowAny]
     serializer_class = LoginSerializer
 
     def post(self, request, *args, **kwargs):
+        """Handle POST request for user login and 
+        return JWT tokens in cookies."""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         return self._build_response(serializer.validated_data)
 
     def _build_response(self, validated_data):
+        """Build the response for a successful login, 
+        setting JWT tokens in cookies."""
         response = Response(
             {'detail': 'Login successfully!', 'user': validated_data['user']},
             status=status.HTTP_200_OK,
@@ -44,6 +52,7 @@ class LoginView(TokenObtainPairView):
         return response
 
     def _set_token_cookies(self, response, validated_data):
+        """Set the JWT tokens in cookies."""
         response.set_cookie(
             key='access_token',
             value=str(validated_data['access']),
@@ -60,7 +69,9 @@ class LoginView(TokenObtainPairView):
         )
 
 class CookieTokenRefreshView(TokenRefreshView):
+    """View for handling JWT token refresh using cookies."""
     def post(self, request, *args, **kwargs):
+        """Handle POST request for refreshing JWT tokens using cookies."""
         refresh_token = request.COOKIES.get('refresh_token')
         if not refresh_token:
             return Response(
@@ -94,18 +105,23 @@ class CookieTokenRefreshView(TokenRefreshView):
 
 
 class LogoutView(APIView):
+    """View for handling user logout."""
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        """Handle POST request for user logout, 
+        blacklisting the refresh token and clearing cookies."""
         self._blacklist_refresh_token(request)
         response = Response(
-            {'detail': 'Log-Out successfully! All Tokens will be deleted. Refresh token is now invalid.'},
+            {'detail': 'Log-Out successfully! All Tokens will be deleted. '
+            'Refresh token is now invalid.'},
             status=status.HTTP_200_OK,
         )
         self._clear_auth_cookies(response)
         return response
 
     def _blacklist_refresh_token(self, request):
+        """Blacklist the refresh token."""
         refresh_token = request.COOKIES.get('refresh_token')
         if not refresh_token:
             return
@@ -115,5 +131,6 @@ class LogoutView(APIView):
             return
 
     def _clear_auth_cookies(self, response):
+        """Clear the authentication cookies."""
         response.delete_cookie('access_token', samesite='LAX')
         response.delete_cookie('refresh_token', samesite='LAX')

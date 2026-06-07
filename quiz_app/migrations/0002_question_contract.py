@@ -1,7 +1,10 @@
+"""Migration: add question_title, question_options, and answer fields to Question."""
+
 from django.db import migrations, models
 
 
 def copy_existing_question_titles(apps, schema_editor):
+    """Copy the legacy title field into the new question_title field for existing rows."""
     question_model = apps.get_model('quiz_app', 'Question')
     for question in question_model.objects.all().iterator():
         question.question_title = question.title

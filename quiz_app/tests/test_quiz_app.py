@@ -1,3 +1,5 @@
+"""Integration tests for quiz_app API endpoints and models."""
+
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -13,6 +15,8 @@ User = get_user_model()
 
 
 class QuizListCreateEndpointTests(APITestCase):
+    """Tests for the GET/POST /api/quizzes/ endpoint."""
+
     def setUp(self):
         self.url = '/api/quizzes/'
         self.user = User.objects.create_user(
@@ -27,11 +31,13 @@ class QuizListCreateEndpointTests(APITestCase):
         )
 
     def test_quiz_list_returns_401_without_authentication(self):
+        """Expect 401 Unauthorized when the request carries no credentials."""
         response = self.client.get(self.url, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_quiz_list_returns_200_for_own_quizzes(self):
+        """Expect 200 OK and only the authenticated user's quizzes in the response."""
         own_quiz = Quiz.objects.create(
             owner=self.user,
             video_url='https://www.youtube.com/watch?v=ownquiz001',
@@ -53,6 +59,7 @@ class QuizListCreateEndpointTests(APITestCase):
         self.assertEqual(response.data[0]['id'], own_quiz.id)
 
     def test_quiz_list_returns_200_for_cookie_authenticated_user(self):
+        """Expect 200 OK when the user authenticates via an access_token cookie."""
         own_quiz = Quiz.objects.create(
             owner=self.user,
             video_url='https://www.youtube.com/watch?v=ownquiz-cookie-auth',
@@ -69,6 +76,7 @@ class QuizListCreateEndpointTests(APITestCase):
         self.assertEqual(response.data[0]['id'], own_quiz.id)
 
     def test_quiz_create_returns_201_for_valid_youtube_url(self):
+        """Expect 201 Created when a valid YouTube URL is submitted and generation succeeds."""
         payload = {
             'url': 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
         }
@@ -93,6 +101,7 @@ class QuizListCreateEndpointTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_quiz_create_returns_400_for_invalid_url(self):
+        """Expect 400 Bad Request when the submitted URL is not a YouTube link."""
         payload = {
             'url': 'https://example.com/not-a-youtube-video',
         }
@@ -103,6 +112,7 @@ class QuizListCreateEndpointTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_quiz_create_returns_503_when_service_fails(self):
+        """Expect 503 Service Unavailable when the quiz generation service raises an error."""
         payload = {'url': 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'}
         self.client.force_authenticate(user=self.user)
 
@@ -114,6 +124,8 @@ class QuizListCreateEndpointTests(APITestCase):
 
 
 class QuizDetailEndpointTests(APITestCase):
+    """Tests for the GET /api/quizzes/<id>/ endpoint."""
+
     def setUp(self):
         self.user = User.objects.create_user(
             username='charlie',
@@ -139,11 +151,13 @@ class QuizDetailEndpointTests(APITestCase):
         )
 
     def test_quiz_detail_returns_401_without_authentication(self):
+        """Expect 401 Unauthorized when the request carries no credentials."""
         response = self.client.get(self._detail_url(self.own_quiz.id), format='json')
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_quiz_detail_returns_200_for_own_quiz(self):
+        """Expect 200 OK when the authenticated user requests their own quiz."""
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(self._detail_url(self.own_quiz.id), format='json')
@@ -151,6 +165,7 @@ class QuizDetailEndpointTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_quiz_detail_returns_403_for_foreign_quiz(self):
+        """Expect 403 Forbidden when the user tries to access another user's quiz."""
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(self._detail_url(self.other_quiz.id), format='json')
@@ -158,6 +173,7 @@ class QuizDetailEndpointTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_quiz_detail_returns_404_for_unknown_quiz_id(self):
+        """Expect 404 Not Found when the requested quiz ID does not exist."""
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(self._detail_url(999999), format='json')
@@ -165,6 +181,7 @@ class QuizDetailEndpointTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_quiz_detail_uses_documented_question_schema(self):
+        """Expect the response to include questions without owner or quiz-level fields."""
         Question.objects.create(
             quiz=self.own_quiz,
             question_title='Question 1',
@@ -190,6 +207,8 @@ class QuizDetailEndpointTests(APITestCase):
 
 
 class QuizUpdateDeleteEndpointTests(APITestCase):
+    """Tests for the PATCH and DELETE /api/quizzes/<id>/ endpoints."""
+
     def setUp(self):
         self.user = User.objects.create_user(
             username='eve',
@@ -215,6 +234,7 @@ class QuizUpdateDeleteEndpointTests(APITestCase):
         )
 
     def test_quiz_patch_returns_401_without_authentication(self):
+        """Expect 401 Unauthorized when patching without credentials."""
         payload = {'title': 'Updated Title'}
 
         response = self.client.patch(self._detail_url(self.own_quiz.id), payload, format='json')
@@ -222,11 +242,13 @@ class QuizUpdateDeleteEndpointTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_quiz_delete_returns_401_without_authentication(self):
+        """Expect 401 Unauthorized when deleting without credentials."""
         response = self.client.delete(self._detail_url(self.own_quiz.id), format='json')
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_quiz_patch_returns_403_for_foreign_quiz(self):
+        """Expect 403 Forbidden when the user tries to patch another user's quiz."""
         payload = {'title': 'Blocked Update'}
         self.client.force_authenticate(user=self.user)
 
@@ -235,6 +257,7 @@ class QuizUpdateDeleteEndpointTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_quiz_delete_returns_403_for_foreign_quiz(self):
+        """Expect 403 Forbidden when the user tries to delete another user's quiz."""
         self.client.force_authenticate(user=self.user)
 
         response = self.client.delete(self._detail_url(self.other_quiz.id), format='json')
@@ -242,6 +265,7 @@ class QuizUpdateDeleteEndpointTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_quiz_patch_returns_404_for_unknown_quiz_id(self):
+        """Expect 404 Not Found when patching a non-existent quiz ID."""
         payload = {'title': 'Unknown'}
         self.client.force_authenticate(user=self.user)
 
@@ -250,6 +274,7 @@ class QuizUpdateDeleteEndpointTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_quiz_delete_returns_404_for_unknown_quiz_id(self):
+        """Expect 404 Not Found when deleting a non-existent quiz ID."""
         self.client.force_authenticate(user=self.user)
 
         response = self.client.delete(self._detail_url(999999), format='json')
@@ -257,6 +282,7 @@ class QuizUpdateDeleteEndpointTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_quiz_patch_updates_title_and_description(self):
+        """Expect 200 OK and both fields persisted when a valid patch payload is sent."""
         payload = {
             'title': 'Partially Updated Title',
             'description': 'Partially Updated Description',
@@ -271,6 +297,7 @@ class QuizUpdateDeleteEndpointTests(APITestCase):
         self.assertEqual(self.own_quiz.description, payload['description'])
 
     def test_quiz_patch_returns_400_for_unsupported_field(self):
+        """Expect 400 Bad Request when the patch payload contains a non-editable field."""
         payload = {
             'video_url': 'https://www.youtube.com/watch?v=not-allowed-update',
         }
@@ -281,6 +308,7 @@ class QuizUpdateDeleteEndpointTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_quiz_delete_returns_204_and_deletes_quiz(self):
+        """Expect 204 No Content and the quiz to be removed from the database."""
         self.client.force_authenticate(user=self.user)
 
         response = self.client.delete(self._detail_url(self.own_quiz.id), format='json')
@@ -293,6 +321,8 @@ class QuizUpdateDeleteEndpointTests(APITestCase):
 
 
 class ModelStrTests(APITestCase):
+    """Tests for __str__ representations of Quiz and Question models."""
+
     def setUp(self):
         self.user = get_user_model().objects.create_user(
             username='strtest',
@@ -312,7 +342,9 @@ class ModelStrTests(APITestCase):
         )
 
     def test_quiz_str_returns_title(self):
+        """Expect Quiz.__str__ to return the quiz title."""
         self.assertEqual(str(self.quiz), 'My Quiz')
 
     def test_question_str_returns_question_title(self):
+        """Expect Question.__str__ to return the question title."""
         self.assertEqual(str(self.question), 'What is 2+2?')

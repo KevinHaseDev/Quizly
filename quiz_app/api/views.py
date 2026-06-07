@@ -1,3 +1,4 @@
+"""API views for the quiz app."""
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
@@ -27,15 +28,18 @@ class QuizListCreateView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        """Return quizzes owned by the authenticated user."""
         return Quiz.objects.filter(owner=self.request.user).prefetch_related(
             "questions"
         )
 
     def get(self, request, *args, **kwargs):
+        """Return a list of all quizzes belonging to the authenticated user."""
         serializer = self.get_serializer(self.get_queryset(), many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request, *args, **kwargs):
+        """Generate and persist a quiz from a YouTube URL, returning 201 on success."""
         request_serializer = QuizCreateRequestSerializer(data=request.data)
         request_serializer.is_valid(raise_exception=True)
 
@@ -97,9 +101,11 @@ class QuizDetailView(generics.GenericAPIView):
     lookup_url_kwarg = "id"
 
     def get_queryset(self):
+        """Return all quizzes with owner and questions pre-fetched."""
         return Quiz.objects.select_related("owner").prefetch_related("questions")
 
     def _get_object(self):
+        """Fetch the quiz by PK and enforce object-level permissions."""
         quiz = get_object_or_404(
             self.get_queryset(), pk=self.kwargs.get(self.lookup_url_kwarg)
         )
@@ -107,11 +113,13 @@ class QuizDetailView(generics.GenericAPIView):
         return quiz
 
     def get(self, request, *args, **kwargs):
+        """Return the requested quiz if the user owns it."""
         quiz = self._get_object()
         serializer = self.get_serializer(quiz)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def patch(self, request, *args, **kwargs):
+        """Partially update the quiz title and/or description."""
         quiz = self._get_object()
         allowed_fields = {"title", "description"}
         unsupported_fields = set(request.data.keys()) - allowed_fields
@@ -129,6 +137,7 @@ class QuizDetailView(generics.GenericAPIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def delete(self, request, *args, **kwargs):
+        """Delete the quiz and return 204 No Content."""
         quiz = self._get_object()
         quiz.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

@@ -1,3 +1,4 @@
+"""Permissions for the quiz app API."""
 from rest_framework.permissions import BasePermission
 
 

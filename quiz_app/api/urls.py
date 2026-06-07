@@ -1,3 +1,5 @@
+"""URL routing for the quiz_app API."""
+
 from django.urls import path
 
 from .views import QuizDetailView, QuizListCreateView

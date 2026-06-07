@@ -1,3 +1,4 @@
+"""URL patterns for authentication API endpoints."""
 from django.urls import path
 
 from .views import CookieTokenRefreshView, LoginView, LogoutView, RegistrationView
